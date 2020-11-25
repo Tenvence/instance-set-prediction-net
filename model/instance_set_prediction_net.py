@@ -15,7 +15,7 @@ class InstanceSetPredictionNet(nn.Module):
             nn.Unflatten(dim=-1, unflattened_size=(num_instances, num_classes))
         )
 
-        inner_dim = 10
+        inner_dim = 14
         self.bbox_branch = nn.Sequential(
             nn.Conv2d(in_channels=(num_instances * num_classes), out_channels=num_instances, kernel_size=1, bias=False),
             nn.BatchNorm2d(num_features=num_instances),
@@ -29,8 +29,8 @@ class InstanceSetPredictionNet(nn.Module):
 
     def forward(self, x):
         x = self.backbone(x)
-        instance_cam = self.instance_class_conv(x)
-        cla_logist = self.cla_branch(instance_cam)
-        pred_bbox = self.bbox_branch(instance_cam)
+        instance_class_feature_map = self.instance_class_conv(x)
+        cla_logist = self.cla_branch(instance_class_feature_map)
+        pred_bbox = self.bbox_branch(instance_class_feature_map)
 
         return cla_logist, pred_bbox
