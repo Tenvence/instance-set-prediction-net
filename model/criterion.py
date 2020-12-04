@@ -7,12 +7,12 @@ import utils.bbox_ops as bbox_ops
 
 
 class SetCriterion(nn.Module):
-    def __init__(self, matcher, no_instance_coef, label_loss_coef, giou_loss_coef):
+    def __init__(self, matcher, no_instance_coef):
         super(SetCriterion, self).__init__()
         self.matcher = matcher
+        self.class_weight = self.matcher.class_weight
+        self.giou_weight = self.matcher.giou_weight
         self.no_object_coef = no_instance_coef
-        self.label_loss_coef = label_loss_coef
-        self.giou_loss_coef = giou_loss_coef
 
     def forward(self, cla_logist, bboxes_pred, classes_gt, bboxes_gt):
         matching_classes_gt, matching_bboxes_gt = self.matcher(cla_logist, bboxes_pred, classes_gt, bboxes_gt)  # pred_idx & gt_idx & real_object_mask: [B, num_queries]
@@ -20,7 +20,7 @@ class SetCriterion(nn.Module):
         label_loss = self.get_label_loss(cla_logist, matching_classes_gt)
         giou_loss = self.get_bbox_loss(bboxes_pred, matching_bboxes_gt, matching_classes_gt)
 
-        return self.label_loss_coef * label_loss + self.giou_loss_coef * giou_loss, label_loss, giou_loss
+        return label_loss, giou_loss
 
     def get_label_loss(self, logist_pred, classes_gt):
         num_classes = logist_pred.shape[-1]

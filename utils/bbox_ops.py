@@ -71,3 +71,10 @@ def get_mutual_giou(bboxes1, bboxes2):
     closure = wh[..., 0] * wh[..., 1]
 
     return iou - (closure - union) / (union + 1e-7)
+
+
+def recover_bboxes(bboxes, ow, oh):
+    bboxes[:, [0, 2]] *= ow
+    bboxes[:, [1, 3]] *= oh
+    bboxes[:, :2] -= bboxes[:, 2:] / 2
+    return bboxes
