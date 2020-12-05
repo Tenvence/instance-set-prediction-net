@@ -45,7 +45,7 @@ def train(model, optimizer, criterion, lr_scheduler, data_loader, logger, res_fi
         processor.set_description('cur_loss: %.4f, avg_loss: %.4f' % (float(loss), sum(losses) / len(losses)))
     torch.save(model.module, os.path.join(res_file_path, 'model.pkl'))
     torch.save(model.module.state_dict(), os.path.join(res_file_path, 'param.pth'))
-    logger.add_scalar('loss/loss', sum(losses) / len(losses), epoch_idx)
+    logger.add_scalar('loss', sum(losses) / len(losses), epoch_idx)
     logger.add_scalar('loss/label_loss', sum(label_losses) / len(label_losses), epoch_idx)
     logger.add_scalar('loss/bbox_loss', sum(bbox_losses) / len(bbox_losses), epoch_idx)
     lr_scheduler.step()
@@ -167,4 +167,8 @@ def __main__():
 
 
 if __name__ == '__main__':
-    __main__()
+    # __main__()
+    model = InstanceSetPredictionNet(num_classes=21, num_instances=50)
+    inp = torch.rand((2, 3, 448, 448))
+    cla, bbox, instance = model(inp)
+    print(cla.shape, bbox.shape, instance.shape)
