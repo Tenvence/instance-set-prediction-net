@@ -1,5 +1,37 @@
 import torch
 import torch.nn as nn
+import torchvision.ops as cv_ops
+
+
+class StageBackbone(nn.Module):
+    def __init__(self, backbone):
+        super(StageBackbone, self).__init__()
+        backbone_stage_list = list(backbone.children())[:-2]
+        self.backbone_c5 = backbone_stage_list[-1]
+        self.backbone_c4 = backbone_stage_list[-2]
+        self.backbone_c3 = backbone_stage_list[-3]
+        self.backbone_rest = nn.Sequential(*list(backbone_stage_list[:-3]))
+
+    def forward(self, x):
+        x = self.backbone_rest(x)
+        c3 = self.backbone_c3(x)
+        c4 = self.backbone_c4(c3)
+        c5 = self.backbone_c5(c4)
+        return c3, c4, c5
+
+
+class PathAggregationNetwork(nn.Module):
+    def __init__(self, in_channels_list, out_channels):
+        super(PathAggregationNetwork, self).__init__()
+
+        self.fpn = cv_ops.FeaturePyramidNetwork(in_channels_list, out_channels)
+        self.pan = cv_ops.FeaturePyramidNetwork([out_channels, out_channels, out_channels], out_channels)
+
+    def forward(self, c3, c4, c5):
+        fpn_out = self.fpn({'p3': c3, 'p4': c4, 'p5': c5})
+        pan_out = self.pan({'q5': fpn_out['p5'], 'q4': fpn_out['p4'], 'q3': fpn_out['p3']})
+        q3, q4, q5 = pan_out['q3'], pan_out['q4'], pan_out['q5']
+        return q3, q4, q5
 
 
 class InstanceClassModule(nn.Module):
@@ -31,7 +63,9 @@ class BboxPredBranch(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(in_features=inner_dim * inner_dim, out_features=inner_dim * inner_dim), nn.ReLU(),
             nn.Linear(in_features=inner_dim * inner_dim, out_features=inner_dim * inner_dim), nn.ReLU(),
-            nn.Linear(in_features=inner_dim * inner_dim, out_features=4), nn.Dropout(), nn.Sigmoid()
+            nn.Linear(in_features=inner_dim * inner_dim, out_features=inner_dim * inner_dim), nn.ReLU(),
+            nn.Linear(in_features=inner_dim * inner_dim, out_features=inner_dim * inner_dim), nn.ReLU(),
+            nn.Linear(in_features=inner_dim * inner_dim, out_features=4), nn.Sigmoid()
         )
 
     def forward(self, instance_class_map, cla_logist):
