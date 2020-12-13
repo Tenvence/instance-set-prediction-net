@@ -1,3 +1,5 @@
+
+
 import copy
 import datetime
 from collections import defaultdict
@@ -6,7 +8,7 @@ import numpy as np
 import pycocotools.mask as mask_utils
 
 
-class CocoEval:
+class SegCocoEval:
     def __init__(self, coco_gt=None, coco_dt=None, iou_type='segm'):
         self.cocoGt = coco_gt  # ground truth COCO API
         self.cocoDt = coco_dt  # detections COCO API

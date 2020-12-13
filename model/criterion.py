@@ -1,4 +1,5 @@
 import torch
+import torch.cuda.amp as amp
 import torch.nn as nn
 import torch.nn.functional as func
 from scipy.optimize import linear_sum_assignment
@@ -14,6 +15,7 @@ class SetCriterion(nn.Module):
         self.giou_weight = self.matcher.giou_weight
         self.no_object_coef = no_instance_coef
 
+    @amp.autocast()
     def forward(self, cla_logist, bboxes_pred, classes_gt, bboxes_gt):
         matching_classes_gt, matching_bboxes_gt = self.matcher(cla_logist, bboxes_pred, classes_gt, bboxes_gt)  # pred_idx & gt_idx & real_object_mask: [B, num_queries]
 

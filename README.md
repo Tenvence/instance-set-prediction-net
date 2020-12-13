@@ -39,3 +39,7 @@
 - `/config/_base_/models/mask_rcnn_r50_fpn.py`
     - **Line 47 & Line 66**: modify `num_classes=80` to `num_classes=20`
 
+## Thanks
+
+- Open Source Projects:
+    - [WSIS_BBTP](https://github.com/chengchunhsu/WSIS_BBTP): Implementation of NeurIPS 2019 paper "Weakly Supervised Instance Segmentation using the Bounding Box Tightness Prior"
