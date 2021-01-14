@@ -1,5 +1,3 @@
-
-
 import copy
 import datetime
 from collections import defaultdict
@@ -341,7 +339,7 @@ class SegCocoEval:
         return self.abo
 
     def _summarize_det(self):
-        stats = np.zeros((12,))
+        stats = np.zeros((5,))
         stats[0] = self._summarize(iouThr=.25, maxDets=self.params.maxDets[2])
         stats[1] = self._summarize(iouThr=.5, maxDets=self.params.maxDets[2])
         stats[2] = self._summarize(iouThr=.7, maxDets=self.params.maxDets[2])

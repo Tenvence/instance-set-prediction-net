@@ -18,9 +18,8 @@ class AugVocValDataset(cv_datasets.CocoDetection):
 
     def __getitem__(self, index):
         img, target = load_img_target(self, index)
-        original_h, original_w, _ = img.shape
 
         img = self.transform(image=img)['image']
         img_id = self.ids[index]
 
-        return img, img_id, original_h, original_w
+        return img, img_id

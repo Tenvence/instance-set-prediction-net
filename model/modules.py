@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as func
 import torchvision.ops as cv_ops
 
 
@@ -10,14 +11,16 @@ class StageBackbone(nn.Module):
         self.backbone_c5 = backbone_stage_list[-1]
         self.backbone_c4 = backbone_stage_list[-2]
         self.backbone_c3 = backbone_stage_list[-3]
-        self.backbone_rest = nn.Sequential(*list(backbone_stage_list[:-3]))
+        self.backbone_c2 = backbone_stage_list[-4]
+        self.backbone_c1 = nn.Sequential(*list(backbone_stage_list[:-4]))
 
     def forward(self, x):
-        x = self.backbone_rest(x)
-        c3 = self.backbone_c3(x)
+        c1 = self.backbone_c1(x)
+        c2 = self.backbone_c2(c1)
+        c3 = self.backbone_c3(c2)
         c4 = self.backbone_c4(c3)
         c5 = self.backbone_c5(c4)
-        return [c3, c4, c5]
+        return c1, c2, c3, c4, c5
 
 
 class FeaturePyramidNetwork(nn.Module):
@@ -27,64 +30,66 @@ class FeaturePyramidNetwork(nn.Module):
 
     def forward(self, feature_maps):
         fpn_out = self.fpn({'p%d' % idx: feature_map for idx, feature_map in enumerate(feature_maps)})
-        fpn_out = list(fpn_out.values())
-        return fpn_out
+        return list(fpn_out.values())[0]
 
 
-class InstanceClassModule(nn.Module):
-    def __init__(self, num_instances, num_classes, in_channels):
-        super(InstanceClassModule, self).__init__()
+class InstanceSeparator(nn.Module):
+    def __init__(self, num_instances, num_classes, d_model):
+        super(InstanceSeparator, self).__init__()
 
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=(num_instances * num_classes), kernel_size=1, bias=False),
-            nn.BatchNorm2d(num_features=num_instances * num_classes),
-            nn.ReLU(),
-            nn.Conv2d(in_channels=num_instances * num_classes, out_channels=num_instances * num_classes, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(num_features=num_instances * num_classes),
-            nn.ReLU(),
-            nn.Conv2d(in_channels=num_instances * num_classes, out_channels=num_instances * num_classes, kernel_size=1, bias=False)
-        )
-        self.unfold = nn.Unflatten(dim=1, unflattened_size=(num_instances, num_classes))
+        self.num_instances = num_instances
+        self.num_classes = num_classes
+
+        # self.ins_sep_conv_list = nn.ModuleList([nn.Sequential(
+        #     nn.Conv2d(in_channels=d_model, out_channels=d_model, kernel_size=1, bias=False),
+        #     nn.SyncBatchNorm(num_features=d_model),
+        #     nn.ReLU(),
+        #     nn.Conv2d(in_channels=d_model, out_channels=d_model, kernel_size=3, padding=1, bias=False),
+        #     nn.SyncBatchNorm(num_features=d_model),
+        #     nn.ReLU(),
+        #     nn.Conv2d(in_channels=d_model, out_channels=num_classes, kernel_size=1, bias=False),
+        #     nn.SyncBatchNorm(num_features=num_classes),
+        #     nn.ReLU(),
+        #     nn.Conv2d(in_channels=num_classes, out_channels=num_classes, kernel_size=3, padding=1, bias=False)
+        # ) for _ in range(num_instances)])
+        self.ins_sep_conv_list = nn.ModuleList([nn.Conv2d(in_channels=d_model, out_channels=num_classes, kernel_size=1, bias=False) for _ in range(num_instances)])
 
     def forward(self, general_feature_map):
-        general_feature_map = self.conv(general_feature_map)
-        instance_class_map = self.unfold(general_feature_map)
+        class_map_list = []
+        for m in self.ins_sep_conv_list:
+            class_map = m(general_feature_map)
+            class_map_list.append(class_map)
+        instance_class_map = torch.stack(class_map_list, dim=1)
+
         return instance_class_map
 
 
-class ClaBranch(nn.Module):
-    def __init__(self):
-        super(ClaBranch, self).__init__()
+class InstanceMapRefiner(nn.Module):
+    def __init__(self, d_model, num_instances, num_classes):
+        super(InstanceMapRefiner, self).__init__()
 
-    @staticmethod
-    def forward(instance_class_map):
-        instance_class_vec = torch.mean(instance_class_map, dim=[-1, -2])
-        return instance_class_vec
+        self.num_instances = num_instances
+        self.num_classes = num_classes
 
+        self.img_conv = nn.Conv2d(in_channels=3, out_channels=d_model, kernel_size=1, bias=False)
+        self.c1_conv = nn.Conv2d(in_channels=64, out_channels=d_model, kernel_size=1, bias=False)
+        self.c2_conv = nn.Conv2d(in_channels=256, out_channels=d_model, kernel_size=1, bias=False)
+        self.aux_conv = nn.Conv2d(in_channels=3 * d_model, out_channels=num_instances, kernel_size=1, bias=False)
 
-class BboxPredBranch(nn.Module):
-    def __init__(self, inner_dim):
-        super(BboxPredBranch, self).__init__()
-        self.aap = nn.AdaptiveAvgPool2d(output_size=(inner_dim, inner_dim))
-        self.mlp = nn.Sequential(
-            nn.Linear(in_features=inner_dim * inner_dim, out_features=inner_dim * inner_dim), nn.ReLU(),
-            nn.Linear(in_features=inner_dim * inner_dim, out_features=inner_dim * inner_dim), nn.ReLU(),
-            nn.Linear(in_features=inner_dim * inner_dim, out_features=inner_dim * inner_dim), nn.ReLU(),
-            nn.Linear(in_features=inner_dim * inner_dim, out_features=inner_dim * inner_dim), nn.ReLU(),
-            nn.Linear(in_features=inner_dim * inner_dim, out_features=4), nn.Sigmoid()
-        )
+        self.instance_attention_conv = nn.Conv2d(in_channels=num_instances, out_channels=num_instances, kernel_size=1, bias=False)
+        self.spatial_attention_conv = nn.Conv2d(in_channels=num_instances, out_channels=num_instances, kernel_size=1, bias=False)
 
-    @staticmethod
-    def _select_instance_map(instance_class_map, cla_logist):
-        _, _, _, h, w = instance_class_map.shape
-        select_idx = torch.argmax(cla_logist, dim=-1, keepdim=True)[..., None, None].repeat(1, 1, 1, h, w)  # [B, I, 1] -> [B, I, 1, H, W]
-        instance_map = torch.gather(instance_class_map.sigmoid(), dim=2, index=select_idx).squeeze()  # [B, I, C, H, W] -> [B, I, 1, H, W] -> [B, I, H, W]
-        return instance_map
+    def forward(self, instance_map, img_feature, c1_feature, c2_feature):
+        img_feature = self.img_conv(img_feature)  # [B, 3, H, W] -> [B, d, H, W]
+        c1_feature = self.c1_conv(c1_feature)  # [B, 64, H, W] -> [B, d, H, W]
+        c2_feature = self.c2_conv(c2_feature)  # [B, 256, H, W] -> [B, d, H, W]
 
-    def forward(self, instance_class_maps, cla_logist):
-        instance_maps = [self._select_instance_map(instance_class_map, cla_logist) for instance_class_map in instance_class_maps]
-        instance_maps = [self.aap(instance_map) for instance_map in instance_maps]
-        instance_map = torch.stack(instance_maps, dim=-1).mean(dim=-1)
-        flattened_instance_map = torch.flatten(instance_map, start_dim=2)  # [B, I, H, W] -> [B, I, HW]
-        pred_bbox = self.mlp(flattened_instance_map)
-        return instance_map, pred_bbox
+        aux_feature = torch.cat([img_feature, c1_feature, c2_feature], dim=1)  # [B, 3*d, H, W]
+        aux_feature = self.aux_conv(aux_feature)  # [B, 3*d, H, W] -> [B, I, H, W]
+
+        instance_atten = self.instance_attention_conv(aux_feature).mean(dim=[-2, -1], keepdim=True)
+        spatial_atten = self.spatial_attention_conv(aux_feature).mean(dim=-3, keepdim=True)
+
+        refined_instance_map = instance_map * instance_atten + instance_map * spatial_atten
+
+        return refined_instance_map
