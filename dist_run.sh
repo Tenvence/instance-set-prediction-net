@@ -1,1 +1,1 @@
-python -m torch.distributed.launch --nproc_per_node=4 main.py --name one-conv-in-is --dataset_root ../../DataSet/AugVoc2012 --is_train True
+python -m torch.distributed.launch --nproc_per_node=4 main.py --name large-input-size --dataset_root ../../DataSet/AugVoc2012 --is_train True

@@ -92,14 +92,20 @@ class DistributedLogger:
             pred_instances.extend(np.load(tmp_pre_instances_file, allow_pickle=True))
             os.remove(tmp_pre_instances_file)
 
-        with open(os.path.join(self.val_path, 'val.json'), 'w') as f:
-            json.dump(pred_instances, f)
+        json.dump(pred_instances, open(os.path.join(self.val_path, 'val.json'), 'w'))
 
     def update_tensorboard_val_results(self, coco_gt, epoch_idx):
         if not self.is_master_rank:
             return
 
-        ap25, ap50, ap70, ap75, abo = utils.eval.segm_evaluate(coco_gt, os.path.join(self.val_path, 'val.json'))
+        if len(json.load(open(os.path.join(self.val_path, 'val.json'), 'r'))) == 0:
+            ap, ap50, ap75, ap_s, ap_m, ap_l, ar1, ar10, ar100, ar_s, ar_m, ar_l = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        else:
+            ap, ap50, ap75, ap_s, ap_m, ap_l, ar1, ar10, ar100, ar_s, ar_m, ar_l = utils.eval.bbox_evaluate(coco_gt, os.path.join(self.val_path, 'val.json'))
+
         self.update_tensorboard(super_tag='segm-val', tag_scaler_dict={
-            'mAP@25': ap25 * 100, 'mAP@50': ap50 * 100, 'mAP@70': ap70 * 100, 'mAP@75': ap75 * 100, 'ABO': abo * 100
+            'AP': ap * 100, 'AP@50': ap50 * 100, 'AP@75': ap75 * 100,
+            'AP@S': ap_s * 100, 'AP@M': ap_m * 100, 'AP@L': ap_l * 100,
+            'AR@1': ar1 * 100, 'AR@10': ar10 * 100, 'AR@100': ar100 * 100,
+            'AR@S': ar_s * 100, 'AR@M': ar_m * 100, 'AR@L': ar_l * 100
         }, idx=epoch_idx)

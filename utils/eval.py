@@ -8,8 +8,7 @@ def bbox_evaluate(coco_gt, res_file):
     coco_evaluator.evaluate()
     coco_evaluator.accumulate()
     coco_evaluator.summarize()
-    ap, ap50, ap75 = coco_evaluator.stats[:3]
-    return ap, ap50, ap75
+    return coco_evaluator.stats
 
 
 def segm_evaluate(coco_gt, res_file):

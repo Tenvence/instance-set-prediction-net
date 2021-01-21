@@ -1,4 +1,5 @@
 import torch
+import albumentations.augmentations.bbox_utils as bbox_utils
 
 
 def convert_bboxes_xywh_xyxy(bboxes):
@@ -26,7 +27,7 @@ def get_pair_iou(bboxes1, bboxes2):
     inter = wh[..., 0] * wh[..., 1]
     union = area1 + area2 - inter
 
-    return inter / (union + 1e-7), union
+    return inter / (union + 1e-5), union
 
 
 def get_pair_giou(bboxes1, bboxes2):
@@ -39,7 +40,7 @@ def get_pair_giou(bboxes1, bboxes2):
     wh = (rb - lt).clamp(min=0.)
     closure = wh[..., 0] * wh[..., 1]
 
-    return iou - (closure - union) / (union + 1e-7)
+    return iou - (closure - union) / (union + 1e-5)
 
 
 def get_mutual_iou(bboxes1, bboxes2):
@@ -56,7 +57,7 @@ def get_mutual_iou(bboxes1, bboxes2):
     inter = wh[..., 0] * wh[..., 1]
     union = area1 + area2 - inter
 
-    return inter / (union + 1e-7), union
+    return inter / (union + 1e-5), union
 
 
 def get_mutual_giou(bboxes1, bboxes2):
@@ -70,11 +71,16 @@ def get_mutual_giou(bboxes1, bboxes2):
     wh = (rb - lt).clamp(min=0.)
     closure = wh[..., 0] * wh[..., 1]
 
-    return iou - (closure - union) / (union + 1e-7)
+    return iou - (closure - union) / (union + 1e-5)
 
 
-def recover_bboxes(bboxes, ow, oh):
-    bboxes[:, [0, 2]] *= ow
-    bboxes[:, [1, 3]] *= oh
-    bboxes[:, :2] -= bboxes[:, 2:] / 2
-    return bboxes
+def normalize_bboxes(bboxes, h, w):
+    bboxes = bbox_utils.convert_bboxes_to_albumentations(bboxes, source_format='coco', rows=h, cols=w)
+    bboxes = bbox_utils.convert_bboxes_from_albumentations(bboxes, target_format='yolo', rows=h, cols=w)
+    return torch.as_tensor(bboxes)
+
+
+def denormalize_bboxes(bboxes, h, w):
+    bboxes = bbox_utils.convert_bboxes_to_albumentations(bboxes, source_format='yolo', rows=h, cols=w)
+    bboxes = bbox_utils.convert_bboxes_from_albumentations(bboxes, target_format='coco', rows=h, cols=w)
+    return torch.as_tensor(bboxes)
